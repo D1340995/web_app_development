@@ -1,69 +1,81 @@
-# 流程圖文件：線上算命系統
+# 流程圖文件：食譜收藏夾系統
 
-本文件根據 PRD 與系統架構，視覺化了使用者的操作路徑（User Flow）以及系統內部的資料流動歷程（System Sequence Diagram），並附上主要功能的路由設計。
+本文件根據 PRD 與系統架構，呈現了使用者的操作流程、系統背後的資料互動序列，以及各功能的 URL 對照表。
 
-## 1. 使用者流程圖（User Flow）
+## 1. 使用者流程圖 (User Flow)
 
-以下流程圖說明使用者從進入網站開始，可能會經歷的操作路徑：
+此流程圖展示了使用者進入系統後，可以進行的各項主要操作路徑。
 
 ```mermaid
 flowchart LR
-    A([使用者造訪首頁]) --> B[首頁介紹與功能選單]
+    A([使用者進入網站]) --> B[首頁 - 食譜推薦與最新食譜]
+    B --> C{選擇操作}
     
-    B -->|點擊「開始占卜」| C[占卜/抽籤頁面]
-    B -->|點擊「歷史紀錄」| D[歷史紀錄清單頁]
+    C -->|搜尋食譜| D[輸入關鍵字並送出]
+    D --> E[食譜列表 (搜尋結果)]
+    E --> F[點擊特定食譜]
     
-    C -->|送出表單/點擊抽籤| E[等待動畫]
-    E -->|後端處理完成| F[展示占卜結果與解析]
+    C -->|瀏覽食譜| E
     
-    F -->|點擊「儲存結果」| G[寫入紀錄]
-    G -->|成功提示| F
+    C -->|新增食譜| G[進入新增表單]
+    G --> H[填寫名稱、簡介、材料、步驟]
+    H --> I{送出表單}
+    I -->|驗證失敗| G
+    I -->|驗證成功| F
     
-    F -->|點擊「分享結果」| H[複製結果連結或圖文]
-    H -->|分享給朋友| F
+    C -->|查看我的收藏| J[收藏夾列表]
+    J --> F
     
-    F -->|點擊「重新占卜」| C
-    
-    D -->|瀏覽過去紀錄| I[點選單筆紀錄查看詳情]
+    F[食譜詳細頁面] --> K{選擇操作}
+    K -->|加入/移除收藏| L[更新收藏狀態]
+    L --> F
+    K -->|返回| C
 ```
 
-## 2. 系統序列圖（Sequence Diagram）
+## 2. 系統序列圖 (Sequence Diagram)
 
-以下序列圖詳述「使用者執行抽籤並點選儲存」時，系統背後的運作流程：
+此圖描述「使用者點擊新增食譜」到「資料成功存入資料庫」的完整技術流程。
 
 ```mermaid
 sequenceDiagram
     actor User as 使用者
-    participant Browser as 使用者瀏覽器
+    participant Browser as 瀏覽器
     participant Route as Flask Route
-    participant Model as Model
-    participant DB as SQLite 資料庫
-
-    User->>Browser: 在抽籤頁面點擊「開始抽籤」
-    Browser->>Route: POST /divination/draw
-    Route->>Route: 執行亂數演算法，抽出對應籤詩/結果
-    Route-->>Browser: 回傳包含結果的 HTML 畫面 (Jinja2)
-    Browser-->>User: 展示抽籤結果與解析
+    participant Model as Recipe Model
+    participant DB as SQLite
     
-    User->>Browser: 覺得很準，點擊「儲存結果」
-    Browser->>Route: POST /divination/save (傳送結果資料)
-    Route->>Model: 呼叫 save_history(user_id, result_data)
-    Model->>DB: INSERT INTO history 表格 ...
-    DB-->>Model: 寫入成功
-    Model-->>Route: 寫入成功確認
-    Route-->>Browser: 回傳成功狀態 (或重新載入頁面)
-    Browser-->>User: 顯示「已成功儲存」提示
+    User->>Browser: 在新增食譜表單填寫資料並送出
+    Browser->>Route: POST /recipes/add (表單資料)
+    
+    Route->>Route: 驗證表單資料格式與必填欄位
+    
+    alt 驗證失敗
+        Route-->>Browser: 返回表單頁面並顯示錯誤訊息
+    else 驗證成功
+        Route->>Model: 建立新的食譜物件 (Recipe)
+        Model->>DB: INSERT INTO recipes (名稱, 簡介, 材料, 步驟)
+        DB-->>Model: 成功寫入
+        Model-->>Route: 建立成功
+        Route-->>Browser: 重導向 (Redirect) 至該食譜詳細頁面
+        Browser->>Route: GET /recipes/{id}
+        Route->>Model: 查詢該筆食譜資料
+        Model->>DB: SELECT * FROM recipes WHERE id = {id}
+        DB-->>Model: 回傳食譜資料
+        Model-->>Route: 回傳資料
+        Route-->>Browser: 渲染食譜詳細頁面 (recipe_detail.html)
+    end
 ```
 
 ## 3. 功能清單對照表
 
-根據上述流程與架構需求，系統預計會實作以下對應的 URL 路徑與 HTTP 請求方法：
+以下為 MVP 範圍內各主要功能所對應的 URL 路徑與 HTTP 方法規劃：
 
-| 功能名稱 | URL 路徑 | HTTP 方法 | 說明 |
+| 功能名稱 | 頁面或操作說明 | URL 路徑 | HTTP 方法 |
 | :--- | :--- | :--- | :--- |
-| 首頁 | `/` | GET | 顯示系統介紹、主要功能入口提示 |
-| 抽籤/占卜頁面 | `/divination` | GET | 呈現抽籤介面，可加入注意事項或求籤表單 |
-| 執行抽籤邏輯 | `/divination/draw` | POST | 接收抽籤請求，進行後端抽籤邏輯並回傳結果 |
-| 儲存算命結果 | `/divination/save` | POST | 將使用者想要保留的算命結果寫入歷史紀錄資料庫中 |
-| 歷史紀錄頁面 | `/history` | GET | 查詢該使用者過去儲存過的所有結果並列表呈現 |
-| 顯示單一結果 | `/result/<id>` | GET | 呈現特定一筆結果資料（可作為「分享算命結果」的共用網址） |
+| **首頁與推薦** | 顯示首頁內容，包含隨機/最新食譜推薦 | `/` | GET |
+| **瀏覽食譜清單** | 列出所有食譜或顯示搜尋結果 | `/recipes` | GET |
+| **查看食譜詳細** | 顯示單一食譜的材料與步驟 | `/recipes/<int:recipe_id>` | GET |
+| **進入新增表單** | 顯示新增食譜的 HTML 表單 | `/recipes/add` | GET |
+| **送出新增資料** | 處理表單資料並存入資料庫 | `/recipes/add` | POST |
+| **切換收藏狀態** | 將食譜加入收藏或取消收藏 | `/recipes/<int:recipe_id>/collect` | POST |
+| **我的收藏夾** | 列出使用者已收藏的所有食譜 | `/collections` | GET |
